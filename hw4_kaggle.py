@@ -22,6 +22,8 @@ from torch.utils.data.dataloader import DataLoader
 from PIL import Image
 import torch.nn.functional as F
 
+import statistics
+
 path = '/Users/raymondgreenfield/Documents/Classes/Spring 2022/Deep Learning/kaggle/input/homework4'
 
 bird_class_df = pd.read_csv('/Users/raymondgreenfield/Documents/Classes/Spring 2022/Deep Learning/kaggle/input/homework4/birds_400/birds.csv') 
@@ -52,65 +54,72 @@ def import_data():
     else:
         print("Error: Path does not exist")
 
-#CNN 
+
+#CNN Network
+
+
 class ConvNet(nn.Module):
-    def __init__(self, num_classes=num_classes):
-        super(ConvNet, self).__init__()
-
-        # Output size after convolution filter
-        #(w-f+2p)/s + 1 
-
-        # Input shape = (256, 3, 150, 150) batchsize, RGB, image dimension
-        self.conv1 = nn.Conv2d(in_channels=3, out_channels=12, kernel_size=3, stride=2, padding=1),
-        # Shape= (256,12,150,150)
+    def __init__(self,num_classes=6):
+        super(ConvNet,self).__init__()
+        
+        #Output size after convolution filter
+        #((w-f+2P)/s) +1
+        
+        #Input shape= (256,3,150,150)
+        
+        self.conv1 = nn.Conv2d(in_channels=3,out_channels=12,kernel_size=3,stride=1,padding=1)
+        #Shape = (256,12,150,150)
         self.bn1 = nn.BatchNorm2d(num_features=12)
-        # Shape= (256,12,150,150)
+        #Shape= (256,12,150,150)
         self.relu1 = nn.ReLU()
-        # Shape= (256,12,150,150) (nonlinearity)
-
-        self.pool = nn.MaxPool2d(kernel_size=2) 
-        # Reduce the image size by a factor of 2
-        # Shape= (256,12,75,75)
-
-        self.conv2 = nn.Conv2d(in_channels=12, out_channels=20, kernel_size=3, stride=2, padding=1),
-        # Shape= (256,20,150,150)
+        #Shape = (256,12,150,150)
+        
+        self.pool = nn.MaxPool2d(kernel_size=2)
+        #Reduce the image size be factor 2
+        #Shape = (256,12,75,75)
+        
+        
+        self.conv2 = nn.Conv2d(in_channels=12,out_channels=20,kernel_size=3,stride=1,padding=1)
+        #Shape= (256,20,75,75)
         self.relu2 = nn.ReLU()
-        # Shape= (256,12,75,75)
-
-        self.conv3 = nn.Conv2d(in_channels=20, out_channels=32, kernel_size=3, stride=2, padding=1),
-        # Shape= (256,32,75,75)
-        self.bn3 = nn.BatchNorm2d(num_features=12)
-        # Shape= (256,32,75,75)
+        #Shape = (256,20,75,75)
+        
+        
+        self.conv3 = nn.Conv2d(in_channels=20,out_channels=32,kernel_size=3,stride=1,padding=1)
+        #Shape= (256,32,75,75)
+        self.bn3 = nn.BatchNorm2d(num_features=32)
+        #Shape= (256,32,75,75)
         self.relu3 = nn.ReLU()
-        # Shape= (256,32,75,75)
-
-        # Adding the fully connected layer
-        self.fc = nn.Linear(in_features=32*75*75, out_features=num_classes) # this could be tested on the LogisticRegression
-
-        # Feed Forward function
-
-    def forward(self, inputs):
-
-        output = self.conv1(inputs)
-        output = self.bn1(output)
-        output = self.relu1(output)
-
-        output = self.pool(output)
-
-        output = self.conv2(output)
-        output = self.relu2(output)
-
-        output = self.conv3(output)
-        output = self.bn3(output)
-        output = self.relu3(output)
-
-        # Above output will be in matrix form, with shape (256,32,75,75)
-
-        output = output.view(-1,32*75*75)
-        output = self.fc(output)
-
+        #Shape= (256,32,75,75)
+        
+        self.fc=nn.Linear(in_features=75 * 75 * 32,out_features=num_classes)
+        
+        
+    #Feed forwad function    
+    def forward(self,inp):
+        output=self.conv1(inp)
+        output=self.bn1(output)
+        output=self.relu1(output)
+            
+        output=self.pool(output)
+            
+        output=self.conv2(output)
+        output=self.relu2(output)
+            
+        output=self.conv3(output)
+        output=self.bn3(output)
+        output=self.relu3(output)
+            
+            
+        #Above output will be in matrix form, with shape (256,32,75,75)
+            
+        output=output.view(-1,32*75*75)
+            
+        output=self.fc(output)
+            
         return output
-
+            
+        
 def create_test_train_valid_df():
     # I do not know why my general filepath is not working in MacOS
     directories = ['/Users/raymondgreenfield/Documents/Classes/Spring 2022/Deep Learning/kaggle/input/homework4/birds_400/test',
@@ -160,34 +169,72 @@ def show_batch(dl):
         ax.imshow(make_grid(images[: 100], 10).permute(1,2,0))
         break
 
+def train(model, loss_fn, optimizer, train_loader, cuda):
+    
+    #set the module in training mode
+    model.train()
+    
+    train_batch_losses = []
+    
+    for batch, labels in train_loader:
+        
+        #send the training data to the GPU
+        batch = batch.to(cuda)
+        labels = labels.to(cuda)
+        
+        #set all gradients to zero
+        optimizer.zero_grad()
+        
+        #forward propagate
+        y_pred = model(batch)
+        
+        #calculate the loss
+        loss = loss_fn(y_pred, labels)
+        
+        #bachpropagate
+        loss.backward()
+        
+        #update the parameters (weights and biases)
+        optimizer.step()
+        
+        train_batch_losses.append(float(loss))
+        
+    mean_loss = statistics.mean(train_batch_losses)
+        
+    return mean_loss
+
+def validate(model, loss_fn, optimizer):
+    
+    # set the model in evaluation mode
+    model.eval()
+    
+    # save predictions for later
+    pedrictions = []
+    
+    # stop tracking the parameters for backpropagation
+    with torch.no_grad():
+        
+        validation_batch_losses = []
+        
+        for batch, labels in valid_loader:
+            
+            # send the validation data to GPU
+            batch = batch.to(cuda)
+            labels = labels.to(cuda)
+            
+            # forward propagate
+            labels_pred = model(batch)
+            
+            # calculate loss
+            loss = loss_fn(labels_pred, labels)
+            
+            validation_batch_losses.append(float(loss))
+            
+            mean_loss = statistics.mean(validation_batch_losses)
+           
+    return mean_loss 
+
 def main():
-    import_data()
-    """
-    df_test, df_train, df_valid = create_test_train_valid_df()   
-    #(2001, 2), (58388, 2), (2000, 2) respectively
-    #plot_traing_df(df_train)
-
-    df_sample = df_train.sample(10)
-    df_sample.reset_index(drop=True, inplace=True)
-
-    #print(df_sample.path[0])
-
-    image = Image.open(df_sample.path[0])
-
-    # Define a transform to convert the image to tensor
-    transform = transforms.ToTensor()
-
-    # Convert the image to PyTorch tensor
-    tensor = transform(image)
-
-    # print the shape of converted image tensor
-    #print(tensor.shape) 
-    #torch.Size([3, 224, 224])
-
-    #plt.imshow(transforms.ToPILImage()(transforms.ToTensor()(image)), interpolation="bicubic")
-    #plt.show()
-    # 
-    """
 
     device = "cuda" if torch.cuda.is_available() else "cpu"                     
     kwargs = {'num_workers': 1, 'pin_memory': True} if device=='cuda' else {}
@@ -215,12 +262,6 @@ def main():
     valid_loader = DataLoader(ImageFolder(valid_path, transform=trans), 
                               batch_size, #num_workers=3, pin_memory=True
                             )
-    
-    #dataiter = iter(train_loader)
-    #data = dataiter.next()
-    #print(data)
-
-    
 
     root = pathlib.Path(train_path)
     classes = sorted(j.name.split('/')[-1] for j in root.iterdir())             
@@ -230,7 +271,8 @@ def main():
     # Optimizer and loss function
     # Parameters have been set as global values
     loss_function = nn.CrossEntropyLoss()  
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.0001)  
+    #optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.0001)  
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
 
     train_count = len(glob.glob(train_path+'/**/*.jpg'))
     test_count = len(glob.glob(test_path+'/**/*.jpg'))
@@ -239,6 +281,19 @@ def main():
     best_accuracy = 0.0
 
 
+    for images, labels in train_loader:
+        if torch.cuda.is_available():              
+            images = Variable(images.cuda())
+            labels = Variable(labels.cuda())
+        else:
+            images = Variable(images.cpu())
+            labels = Variable(labels.cpu())
+
+        
+
+
+    """
+    
     for epoch in range(num_epochs):
 
         # Evaluation and training on training dataset
@@ -247,7 +302,7 @@ def main():
         train_loss = 0.0
 
         for i, (images, labels) in enumerate(train_loader):
-            if torch.cuda.is_available():               # I dont know if I should do this or not 
+            if torch.cuda.is_available():              
                 images = Variable(images.cuda())
                 labels = Variable(labels.cuda())
             else:
@@ -259,7 +314,7 @@ def main():
             outputs = model(images)
             loss = loss_function(outputs, labels)
             loss.backward() 
-            loss.step()
+            optimizer.step()
 
             train_loss += loss.cpu().data*images.size(0)
             _, prediction = torch.max(outputs.data,1)
@@ -294,7 +349,7 @@ def main():
         if test_accuracy > best_accuracy:
             torch.save(model.state_dict(), 'best_checkpoint.model')
             best_accuracy = test_accuracy
-    
+    """
 
     """    
     model = LogisticRegression(input_size, num_classes).to(device)
